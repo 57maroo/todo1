@@ -1,15 +1,27 @@
+// ====== Firebase 초기화 및 설정 ======
+const firebaseConfig = {
+    apiKey: "AIzaSyCo0pBG1RZ67jNFbsG2ZSKSowawSRCw4xE",
+    authDomain: "todo1-4f193.firebaseapp.com",
+    databaseURL: "https://todo1-4f193-default-rtdb.firebaseio.com",
+    projectId: "todo1-4f193",
+    storageBucket: "todo1-4f193.firebasestorage.app",
+    messagingSenderId: "711373112863",
+    appId: "1:711373112863:web:c99b294b332580b258f72a"
+};
+
+// Firebase 앱 및 DB 인스턴스 초기화
+firebase.initializeApp(firebaseConfig);
+const database = firebase.database();
+const tasksRef = database.ref('tasks');
+
+
 // ====== 전역 상태 및 데이터 관리 ======
-let tasks = JSON.parse(localStorage.getItem('todo_tasks')) || [];
+let tasks = []; // Firebase에서 데이터를 받아올 배열
 let currentView = 'list';
 let currentListFilter = 'all'; // 'all', 'completed', 'incomplete'
-let currentDate = new Date(); // 달력용 기준 날짜
+let currentDate = new Date(); 
 let currentDetailTaskId = null;
-let currentDailyDateStr = null; // 달력 팝업용 기준 일자
-
-// 데이터 저장
-function saveToLocalStorage() {
-    localStorage.setItem('todo_tasks', JSON.stringify(tasks));
-}
+let currentDailyDateStr = null; 
 
 // 오늘 날짜 문자열 반환 (YYYY-MM-DD)
 function getTodayString() {
@@ -26,8 +38,24 @@ function formatDateKor(dateStr) {
 // 초기화
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('headerDate').innerText = formatDateKor(getTodayString());
-    renderTasks();
-    if(currentView === 'calendar') renderCalendar();
+    
+    // Firebase 데이터 실시간 리스너 연동
+    tasksRef.on('value', (snapshot) => {
+        tasks = [];
+        snapshot.forEach((childSnapshot) => {
+            const data = childSnapshot.val();
+            tasks.push({
+                id: childSnapshot.key, // Firebase의 고유 키를 ID로 사용
+                title: data.title,
+                date: data.date,
+                desc: data.desc,
+                completed: data.completed || false
+            });
+        });
+        
+        // 데이터가 변경될 때마다 화면 리렌더링
+        renderTasks();
+    });
 });
 
 
@@ -37,7 +65,6 @@ document.addEventListener('DOMContentLoaded', () => {
 function setListFilter(filter) {
     currentListFilter = filter;
     
-    // 버튼 스타일 업데이트
     const btnClasses = {
         active: 'px-4 py-1.5 rounded-full text-sm font-medium bg-blue-600 text-white shadow-sm transition-colors',
         inactive: 'px-4 py-1.5 rounded-full text-sm font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors'
@@ -128,6 +155,11 @@ function renderTasks() {
     if(currentView === 'calendar') {
         renderCalendar();
     }
+    
+    // 상세보기 팝업이 열려있다면 내용 최신화
+    if(currentDetailTaskId) {
+        updateDetailModalContent(currentDetailTaskId);
+    }
 }
 
 // 할 일 카드 UI 생성
@@ -136,7 +168,6 @@ function createTaskCard(task) {
     li.className = 'task-card flex items-start gap-4 p-4 rounded-xl border border-gray-100 bg-white hover:bg-gray-50 transition-colors shadow-sm cursor-pointer';
     li.onclick = () => openDetailModal(task.id);
     
-    // 체크박스 처리 (이벤트 전파 방지)
     const checkDiv = document.createElement('div');
     checkDiv.className = `mt-0.5 w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${task.completed ? 'bg-blue-500 border-blue-500' : 'border-gray-300 hover:border-blue-400'}`;
     checkDiv.onclick = (e) => {
@@ -148,7 +179,6 @@ function createTaskCard(task) {
         checkDiv.innerHTML = `<svg class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>`;
     }
     
-    // 텍스트 영역
     const textDiv = document.createElement('div');
     textDiv.className = 'flex-grow min-w-0';
     textDiv.innerHTML = `
@@ -156,7 +186,6 @@ function createTaskCard(task) {
         <p class="text-sm text-gray-500 truncate mt-1">${task.desc || '내용 없음'}</p>
     `;
     
-    // 날짜 영역
     const dateDiv = document.createElement('div');
     dateDiv.className = 'flex-shrink-0';
     dateDiv.innerHTML = `<span class="text-xs font-semibold px-2.5 py-1 rounded-md bg-gray-100 text-gray-600">${task.date}</span>`;
@@ -187,14 +216,12 @@ function renderCalendar() {
     const grid = document.getElementById('calendarGrid');
     grid.innerHTML = '';
     
-    // 빈 칸(이전 달)
     for (let i = 0; i < firstDay; i++) {
         const emptyDiv = document.createElement('div');
         emptyDiv.className = 'bg-gray-50/50 rounded-lg border border-transparent';
         grid.appendChild(emptyDiv);
     }
     
-    // 날짜 렌더링
     for (let i = 1; i <= daysInMonth; i++) {
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
         const dayTasks = tasks.filter(t => t.date === dateStr);
@@ -202,11 +229,9 @@ function renderCalendar() {
         const dayDiv = document.createElement('div');
         dayDiv.className = 'bg-white rounded-lg border border-gray-100 p-1 flex flex-col hover:border-blue-300 transition-colors relative cursor-pointer';
         
-        // 날짜 숫자
         const isToday = dateStr === getTodayString();
         dayDiv.innerHTML = `<div class="text-xs font-bold mb-1 ${isToday ? 'text-white bg-blue-500 w-6 h-6 flex items-center justify-center rounded-full mx-auto' : 'text-gray-700 text-center'}">${i}</div>`;
         
-        // 클릭 시 이벤트 분기
         dayDiv.onclick = () => {
             if (dayTasks.length > 0) {
                 openDailyTasksModal(dateStr);
@@ -215,7 +240,6 @@ function renderCalendar() {
             }
         };
         
-        // 일정 뱃지 추가 (최대 2개)
         if (dayTasks.length > 0) {
             const maxTasksToShow = 2;
             const tasksContainer = document.createElement('div');
@@ -229,7 +253,6 @@ function renderCalendar() {
             });
             dayDiv.appendChild(tasksContainer);
             
-            // 3개 이상일 경우 더보기 표시
             if(dayTasks.length > maxTasksToShow) {
                 const moreBadge = document.createElement('div');
                 moreBadge.className = 'text-[10px] text-blue-500 font-bold text-center mt-auto';
@@ -243,7 +266,7 @@ function renderCalendar() {
 }
 
 
-// ====== 모달 제어 로직 ======
+// ====== 모달 제어 및 Firebase 쓰기 로직 ======
 function applyModalAnimation(modalId, show) {
     const modal = document.getElementById(modalId);
     const inner = modal.children[0];
@@ -264,9 +287,8 @@ function applyModalAnimation(modalId, show) {
     }
 }
 
-// 1. 추가/수정 모달
 function openAddModal(defaultDate = null, editTaskId = null) {
-    closeDetailModal(); // 혹시 열려있으면 닫기
+    closeDetailModal(); 
     const form = document.getElementById('taskForm');
     const titleEl = document.getElementById('modalTitle');
     
@@ -291,7 +313,7 @@ function closeAddModal() {
     applyModalAnimation('addModal', false);
 }
 
-// 2. 제출(저장) 처리
+// 저장/수정 처리 (Firebase 연동)
 function handleTaskSubmit(e) {
     e.preventDefault();
     const id = document.getElementById('taskId').value;
@@ -300,32 +322,35 @@ function handleTaskSubmit(e) {
     const desc = document.getElementById('taskDesc').value;
 
     if (id) {
-        const index = tasks.findIndex(t => t.id == id);
-        if (index > -1) {
-            tasks[index].title = title;
-            tasks[index].date = date;
-            tasks[index].desc = desc;
-        }
+        // 기존 데이터 수정
+        database.ref('tasks/' + id).update({
+            title: title,
+            date: date,
+            desc: desc
+        });
     } else {
-        const newTask = {
-            id: Date.now().toString(),
-            title, date, desc,
+        // 새 데이터 추가
+        database.ref('tasks').push({
+            title: title,
+            date: date,
+            desc: desc,
             completed: false
-        };
-        tasks.push(newTask);
+        });
     }
 
-    saveToLocalStorage();
-    renderTasks();
     closeAddModal();
 }
 
-// 3. 상세보기 모달
 function openDetailModal(id) {
-    const task = tasks.find(t => t.id == id);
-    if (!task) return;
-    
     currentDetailTaskId = id;
+    updateDetailModalContent(id);
+    applyModalAnimation('detailModal', true);
+}
+
+// 상세 모달 내용 갱신 (실시간 변경 반영용)
+function updateDetailModalContent(id) {
+    const task = tasks.find(t => t.id === id);
+    if (!task) return;
     
     document.getElementById('detailTitle').innerText = task.title;
     document.getElementById('detailTitle').className = `text-2xl font-bold break-words ${task.completed ? 'line-through text-gray-400' : 'text-gray-800'}`;
@@ -343,10 +368,8 @@ function openDetailModal(id) {
     }
     
     document.getElementById('btnDetailEdit').onclick = () => openAddModal(null, id);
-    btnToggle.onclick = () => {
-        toggleTaskStatus(id);
-        openDetailModal(id); // 변경된 내용 갱신
-    };
+    btnToggle.onclick = () => toggleTaskStatus(id);
+    
     document.getElementById('btnDetailDelete').onclick = () => {
         const confirmModal = document.getElementById('confirmModal');
         applyModalAnimation('confirmModal', true);
@@ -358,8 +381,6 @@ function openDetailModal(id) {
             closeDetailModal();
         };
     };
-
-    applyModalAnimation('detailModal', true);
 }
 
 function closeDetailModal() {
@@ -367,29 +388,26 @@ function closeDetailModal() {
     applyModalAnimation('detailModal', false);
 }
 
-// 상태 변경 및 삭제
+// 상태 토글 (Firebase 연동)
 function toggleTaskStatus(id) {
-    const index = tasks.findIndex(t => t.id == id);
-    if (index > -1) {
-        tasks[index].completed = !tasks[index].completed;
-        saveToLocalStorage();
-        renderTasks();
+    const task = tasks.find(t => t.id === id);
+    if (task) {
+        database.ref('tasks/' + id).update({
+            completed: !task.completed
+        });
     }
 }
 
+// 삭제 (Firebase 연동)
 function deleteTask(id) {
-    tasks = tasks.filter(t => t.id != id);
-    saveToLocalStorage();
-    renderTasks();
+    database.ref('tasks/' + id).remove();
 }
 
-// 4. 달력용 일별 목록 팝업
 function openDailyTasksModal(dateStr) {
     currentDailyDateStr = dateStr;
     const titleEl = document.getElementById('dailyTasksTitle');
     titleEl.innerText = formatDateKor(dateStr) + ' 일정';
     
-    // 추가 버튼 이벤트 연결
     const btnAdd = document.getElementById('btnDailyAdd');
     btnAdd.onclick = () => openAddModal(dateStr);
 
@@ -409,7 +427,6 @@ function renderDailyTasksList(dateStr) {
     const dayTasks = tasks.filter(t => t.date === dateStr);
     
     if (dayTasks.length === 0) {
-        // 일정이 삭제되어 비어버린 경우 모달 닫기
         closeDailyTasksModal();
         return;
     }
